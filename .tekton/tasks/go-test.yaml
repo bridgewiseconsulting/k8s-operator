@@ -1,0 +1,38 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: go-test
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.50.0"
+    tekton.dev/categories: Testing
+    tekton.dev/tags: go, test
+    tekton.dev/displayName: "Go Test"
+spec:
+  description: >-
+    This Task runs Go unit tests using 'go test' command.
+  params:
+    - name: package
+      description: package (and its children) under test
+      default: "./..."
+    - name: flags
+      description: flags to use for the test command
+      default: "-race -coverprofile=coverage.txt -covermode=atomic"
+  workspaces:
+    - name: source
+      description: A workspace that contains the Go source code
+  steps:
+    - name: unit-test
+      image: golang:1.24
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env sh
+        set -e
+        echo "Running Go tests..."
+        go test $(params.flags) $(params.package)
+      env:
+        - name: GOCACHE
+          value: /tmp/go-cache
+        - name: GOMODCACHE
+          value: /tmp/go-mod-cache

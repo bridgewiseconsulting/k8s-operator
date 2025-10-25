@@ -1,0 +1,44 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: deploy-operator
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.50.0"
+    tekton.dev/categories: Deployment
+    tekton.dev/tags: kubernetes, kubectl
+    tekton.dev/displayName: "Deploy Operator"
+spec:
+  description: >-
+    This Task deploys the operator using kubectl and kustomize.
+  params:
+    - name: IMAGE
+      description: Image reference to deploy
+    - name: NAMESPACE
+      description: Namespace to deploy to
+      default: "default"
+  workspaces:
+    - name: source
+      description: Workspace containing the kustomize manifests
+  steps:
+    - name: install-crds
+      image: bitnami/kubectl:1.31
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        echo "Installing CRDs..."
+        kubectl apply -k config/crd
+    - name: deploy
+      image: bitnami/kubectl:1.31
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        echo "Deploying operator with image $(params.IMAGE)..."
+        cd config/manager
+        kustomize edit set image controller=$(params.IMAGE)
+        cd ../..
+        kubectl apply -k config/default -n $(params.NAMESPACE)
+        echo "Deployment complete!"

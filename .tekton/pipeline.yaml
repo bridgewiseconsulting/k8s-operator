@@ -1,0 +1,116 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: operator-ci-cd
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.50.0"
+spec:
+  description: >-
+    CI/CD Pipeline for Kubernetes Operator - runs tests, builds image, and deploys.
+  params:
+    - name: repo-url
+      type: string
+      description: The git repository URL to clone from
+    - name: revision
+      type: string
+      description: The git revision to checkout (branch, tag, sha, ref)
+      default: main
+    - name: image
+      type: string
+      description: The image name including registry
+      default: "controller:latest"
+    - name: registry
+      type: string
+      description: Container registry URL
+      default: ""
+    - name: namespace
+      type: string
+      description: Namespace to deploy the operator
+      default: "default"
+    - name: skip-tests
+      type: string
+      description: Skip tests (true/false)
+      default: "false"
+    - name: skip-deploy
+      type: string
+      description: Skip deployment (true/false)
+      default: "false"
+  workspaces:
+    - name: shared-data
+      description: Workspace for sharing data between tasks
+    - name: docker-credentials
+      description: Docker credentials for pushing images
+      optional: true
+  tasks:
+    # Task 1: Clone the repository
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: shared-data
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+    
+    # Task 2: Run Go lint
+    - name: lint
+      runAfter: ["fetch-source"]
+      when:
+        - input: "$(params.skip-tests)"
+          operator: notin
+          values: ["true"]
+      taskRef:
+        name: go-lint
+      workspaces:
+        - name: source
+          workspace: shared-data
+    
+    # Task 3: Run Go tests
+    - name: test
+      runAfter: ["fetch-source"]
+      when:
+        - input: "$(params.skip-tests)"
+          operator: notin
+          values: ["true"]
+      taskRef:
+        name: go-test
+      workspaces:
+        - name: source
+          workspace: shared-data
+    
+    # Task 4: Build and push Docker image
+    - name: build-push
+      runAfter: ["lint", "test"]
+      taskRef:
+        name: docker-build-push
+      workspaces:
+        - name: source
+          workspace: shared-data
+        - name: dockerconfig
+          workspace: docker-credentials
+      params:
+        - name: IMAGE
+          value: $(params.image)
+    
+    # Task 5: Deploy operator to Kubernetes
+    - name: deploy
+      runAfter: ["build-push"]
+      when:
+        - input: "$(params.skip-deploy)"
+          operator: notin
+          values: ["true"]
+      taskRef:
+        name: deploy-operator
+      workspaces:
+        - name: source
+          workspace: shared-data
+      params:
+        - name: IMAGE
+          value: $(tasks.build-push.results.IMAGE_URL)
+        - name: NAMESPACE
+          value: $(params.namespace)

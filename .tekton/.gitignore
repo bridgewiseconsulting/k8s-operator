@@ -1,0 +1,4 @@
+# Local testing files - do not commit
+test-local.yaml
+LOCAL_TEST_RESULTS.md
+test-validation.sh

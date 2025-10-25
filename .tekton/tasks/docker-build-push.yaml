@@ -1,0 +1,56 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: docker-build-push
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.50.0"
+    tekton.dev/categories: Image Build
+    tekton.dev/tags: docker, kaniko
+    tekton.dev/displayName: "Docker Build and Push"
+spec:
+  description: >-
+    This Task builds a Docker image using Kaniko and pushes it to a container registry.
+  params:
+    - name: IMAGE
+      description: Name (reference) of the image to build and push
+    - name: DOCKERFILE
+      description: Path to the Dockerfile to build
+      default: ./Dockerfile
+    - name: CONTEXT
+      description: The build context used by Kaniko
+      default: ./
+    - name: EXTRA_ARGS
+      type: array
+      default: []
+  workspaces:
+    - name: source
+      description: Workspace containing the source code
+    - name: dockerconfig
+      description: Includes a docker `config.json`
+      optional: true
+      mountPath: /kaniko/.docker
+  results:
+    - name: IMAGE_DIGEST
+      description: Digest of the image just built
+    - name: IMAGE_URL
+      description: URL of the image just built
+  steps:
+    - name: build-and-push
+      image: gcr.io/kaniko-project/executor:v1.23.2
+      workingDir: $(workspaces.source.path)
+      args:
+        - $(params.EXTRA_ARGS[*])
+        - --dockerfile=$(params.DOCKERFILE)
+        - --context=$(params.CONTEXT)
+        - --destination=$(params.IMAGE)
+        - --digest-file=$(results.IMAGE_DIGEST.path)
+      securityContext:
+        runAsUser: 0
+    - name: write-url
+      image: docker.io/library/bash:5.2.26
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        echo -n "$(params.IMAGE)" | tee $(results.IMAGE_URL.path)

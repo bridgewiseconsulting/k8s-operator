@@ -1,0 +1,38 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: make
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.50.0"
+    tekton.dev/categories: Build Tools
+    tekton.dev/tags: make
+    tekton.dev/displayName: "Make"
+spec:
+  description: >-
+    This Task runs a make target.
+  params:
+    - name: TARGET
+      description: The make target to run
+      default: "all"
+    - name: ARGS
+      description: Additional arguments to pass to make
+      default: ""
+  workspaces:
+    - name: source
+      description: Workspace containing the Makefile
+  steps:
+    - name: make
+      image: golang:1.24
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        echo "Running make $(params.TARGET) $(params.ARGS)..."
+        make $(params.TARGET) $(params.ARGS)
+      env:
+        - name: GOCACHE
+          value: /tmp/go-cache
+        - name: GOMODCACHE
+          value: /tmp/go-mod-cache
